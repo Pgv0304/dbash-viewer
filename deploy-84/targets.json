@@ -32,12 +32,12 @@
     {
       "name": "demo@84.54.28.45",
       "type": "postgres",
-      "dsn": "pg:5432/demo",
+      "dsn": "oracle11:5432/demo",
       "user": "dbash",
       "password_env": "PG_PASSWORD",
       "interval": 1,
       "include_background": true,
-      "display": "dbash@84.54.28.45/demo · PostgreSQL 16",
+      "display": "dbash@84.54.28.45/demo · PostgreSQL 16 в контейнере oracle11",
       "cpu_count": 1
     }
   ],
@@ -49,7 +49,7 @@
   "load_target": "demo@84.54.28.45",
   "demo_load": {
     "type": "postgres",
-    "dsn": "pg:5432/demo",
+    "dsn": "oracle11:5432/demo",
     "user": "pgload",
     "password_env": "PGLOAD_PASSWORD",
     "max_sessions": 2,
