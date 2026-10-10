@@ -127,7 +127,7 @@ const ashvIntro = (() => {
       root.setAttribute('aria-label', `DB ASH Viewer. Автор проекта: ${AUTHOR}`);
       const cv = el('canvas', 'intro-cv');
       const text = el('div', 'intro-text');
-      const brand = el('div', 'intro-brand'); brand.innerHTML = '<span class="logo">▦</span> DB ASH Viewer <small>Oracle · PostgreSQL</small>';
+      const brand = el('div', 'intro-brand'); brand.innerHTML = '<span class="logo">▦</span> DB ASH Viewer';
       const sub = el('div', 'intro-sub', 'Мониторинг производительности Oracle и PostgreSQL в реальном времени');
       const author = el('div', 'intro-author');
       author.append(el('div', 'intro-label', 'Автор проекта'), el('div', 'intro-name', AUTHOR),
