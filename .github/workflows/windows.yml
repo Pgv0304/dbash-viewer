@@ -1,0 +1,79 @@
+name: Windows package
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        # Python 3.8 — последний, который запускается на Windows 7/8.1 (3.9+ требует api-ms-win-core-path-l1-1-0.dll)
+        with: { python-version: '3.8' }
+      - name: Зависимости
+        run: python -m pip install -r desktop/requirements-desktop.txt
+      - name: Oracle Instant Client (Windows x64, для Oracle 11.2+)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force vendor | Out-Null
+          Invoke-WebRequest https://download.oracle.com/otn_software/nt/instantclient/2119000/instantclient-basiclite-windows.x64-21.19.0.0.0dbru.zip -OutFile vendor/ic.zip
+          Expand-Archive vendor/ic.zip -DestinationPath vendor/ic
+          $src = (Get-ChildItem vendor/ic -Directory | Select-Object -First 1).FullName
+          New-Item -ItemType Directory -Force vendor/pack/instantclient | Out-Null
+          Copy-Item "$src\*.dll" vendor/pack/instantclient/
+          # библиотеки Visual C++ 14.29 (VS 2019), которые нужны клиенту Oracle, — без установки VC++ Redistributable;
+          # не из System32 раннера: свежие версии msvcp140.dll не запускаются на Windows 7
+          python -m pip download -q --no-deps --only-binary=:all: msvc-runtime==14.29.30133 -d vendor/msvc
+          Expand-Archive (Get-ChildItem vendor/msvc/*.whl).FullName -DestinationPath vendor/msvc/x -Force
+          foreach ($f in 'msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll') {
+            Copy-Item (Get-ChildItem vendor/msvc/x -Recurse -Filter $f | Select-Object -First 1).FullName vendor/pack/instantclient/ }
+          # Universal CRT (ucrtbase.dll и api-ms-win-*.dll) — на Windows 7/8.1 без обновления KB2999226 её нет
+          $ucrt = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\Redist" -Recurse -Directory -Filter x64 |
+                  Where-Object { $_.FullName -match '\\ucrt\\DLLs\\x64$' } | Sort-Object FullName | Select-Object -Last 1
+          if (-not $ucrt) { throw "UCRT redist не найден" }
+          New-Item -ItemType Directory -Force vendor/ucrt | Out-Null
+          Copy-Item "$($ucrt.FullName)\*.dll" vendor/ucrt/
+          Copy-Item "$($ucrt.FullName)\*.dll" vendor/pack/instantclient/
+          (Get-ChildItem vendor/ucrt).Count
+          Compress-Archive vendor/pack/instantclient vendor/instantclient-windows.zip
+      - name: Значок
+        run: python desktop/make_icon.py desktop/icon
+      - name: PyInstaller
+        run: >
+          pyinstaller --noconfirm --clean --onefile --windowed --name DBASHViewer
+          --icon desktop/icon/icon.ico --paths .
+          --add-data "app/static;app/static" --add-data "vendor/instantclient-windows.zip;."
+          --add-binary "vendor/ucrt/*.dll;."
+          --hidden-import app.main --collect-submodules app --collect-submodules uvicorn
+          --collect-submodules psycopg --collect-all psycopg_binary
+          desktop/desktop.py
+      - name: Совместимость с Windows 7
+        run: python desktop/check_win7.py dist/DBASHViewer.exe
+      - name: Проверка запуска (без окна)
+        shell: pwsh
+        run: |
+          $env:ASHV_HEADLESS = "1"
+          $p = Start-Process dist/DBASHViewer.exe -PassThru
+          $log = "$env:LOCALAPPDATA\DB ASH Viewer\dbash.log"
+          for ($i = 0; $i -lt 120; $i++) { if ((Test-Path $log) -and (Select-String -Path $log -Pattern "is serving" -Quiet)) { break }; Start-Sleep 1 }
+          Get-Content $log
+          $line = Select-String -Path $log -Pattern "is serving" | Select-Object -Last 1
+          if (-not $line) { throw "приложение не запустилось" }
+          $url = [regex]::Match($line.Line, "http://127.0.0.1:\d+").Value
+          Invoke-RestMethod "$url/api/health" | ConvertTo-Json
+          # драйвер PostgreSQL внутри exe: вход в несуществующий сервер должен дать ошибку подключения PostgreSQL
+          $body = '{"type":"postgres","host":"127.0.0.1","port":5432,"service":"postgres","user":"x","password":"y"}'
+          try { Invoke-RestMethod "$url/api/login" -Method Post -ContentType 'application/json' -Body $body; $pg = "вход прошёл?" }
+          catch { $pg = $_.ErrorDetails.Message }
+          "PostgreSQL: $pg"
+          Stop-Process -Id $p.Id -Force
+          if ($pg -match "No module|ModuleNotFound|ImportError|libpq") { throw "драйвер PostgreSQL не загрузился" }
+          if ($line.Line -notmatch "thick mode: True") { throw "Oracle Instant Client не загрузился" }
+      - uses: actions/upload-artifact@v4
+        with: { name: DBASHViewer-windows, path: dist/DBASHViewer.exe }
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with: { files: dist/DBASHViewer.exe }
