@@ -46,6 +46,22 @@ CREATE TABLE IF NOT EXISTS snapshots(
 );
 CREATE INDEX IF NOT EXISTS snapshots_target_ts ON snapshots(target, ts);
 
+-- Журнал входов в приложение (хранится login_log_days, по умолчанию 3 месяца)
+CREATE TABLE IF NOT EXISTS login_log(
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         INTEGER NOT NULL,
+    event      TEXT NOT NULL,          -- login | server | demo | logout | blocked
+    ok         INTEGER NOT NULL,
+    ip         TEXT,
+    user_agent TEXT,
+    target     TEXT,
+    kind       TEXT,                   -- oracle | postgres
+    db_user    TEXT,
+    dsn        TEXT,
+    message    TEXT
+);
+CREATE INDEX IF NOT EXISTS login_log_ts ON login_log(ts);
+
 CREATE TABLE IF NOT EXISTS sqltext(
     target  TEXT NOT NULL,
     sql_id  TEXT NOT NULL,
@@ -253,3 +269,48 @@ def adopt_connections_from_history() -> int:
             db.executemany("INSERT OR IGNORE INTO connections VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                            [tuple(r) for r in rows])
     return len(rows)
+
+
+# ----------------------------------------------------------------------------- login journal
+
+LOGIN_COLS = ("ts", "event", "ok", "ip", "user_agent", "target", "kind", "db_user", "dsn", "message")
+
+
+def log_login(**f):
+    row = {k: f.get(k) for k in LOGIN_COLS}
+    row["ts"] = int(row["ts"] or time.time())
+    row["ok"] = 1 if row["ok"] else 0
+    for k in ("user_agent", "message"):
+        if row[k]:
+            row[k] = str(row[k])[:400]
+    with _write_lock:
+        c = conn()
+        c.execute(f"INSERT INTO login_log ({', '.join(LOGIN_COLS)}) VALUES ({', '.join('?' * len(LOGIN_COLS))})",
+                  [row[k] for k in LOGIN_COLS])
+        c.commit()
+
+
+def login_log(since: int, limit: int = 1000, event: str = "", ok=None) -> list[dict]:
+    where, args = ["ts >= ?"], [since]
+    if event:
+        where.append("event = ?")
+        args.append(event)
+    if ok is not None:
+        where.append("ok = ?")
+        args.append(1 if ok else 0)
+    return [dict(r) for r in conn().execute(
+        f"SELECT * FROM login_log WHERE {' AND '.join(where)} ORDER BY ts DESC, id DESC LIMIT ?", args + [limit])]
+
+
+def login_stats(since: int) -> dict:
+    r = conn().execute("""SELECT COUNT(*) total, SUM(ok) ok, COUNT(DISTINCT ip) ips, MIN(ts) first_ts
+                            FROM login_log WHERE ts >= ?""", (since,)).fetchone()
+    return {"total": r[0] or 0, "ok": r[1] or 0, "failed": (r[0] or 0) - (r[1] or 0), "ips": r[2] or 0,
+            "first_ts": r[3]}
+
+
+def purge_login_log(days: float):
+    with _write_lock:
+        c = conn()
+        c.execute("DELETE FROM login_log WHERE ts < ?", (int(time.time() - days * 86400),))
+        c.commit()

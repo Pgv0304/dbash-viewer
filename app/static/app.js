@@ -243,6 +243,7 @@ async function openSql(sqlId) {
   $('m-title').textContent = `${pgsql ? 'Запрос' : 'SQL ID'} ${sqlId}`;
   $('m-body').innerHTML = '<div class="empty">Загрузка…</div>';
   $('modal').classList.remove('hidden');
+  $('m-filter').classList.remove('hidden');
   $('m-filter').onclick = () => { closeModal(); addFilter('sql_id', sqlId); };
   const r = curRange();
   const [d, act, ev] = await Promise.all([
@@ -279,7 +280,7 @@ async function openSql(sqlId) {
       color: WC_COLORS[s.name] || '#888', data: act.times.map((t, j) => [t * 1000, s.data[j]]) })),
   });
 }
-function closeModal() { $('modal').classList.add('hidden'); }
+function closeModal() { $('modal').classList.add('hidden'); $('modal').classList.remove('over-login'); }
 $('m-close').onclick = closeModal;
 $('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
@@ -703,6 +704,68 @@ async function start() {
   setInterval(() => { if (!document.hidden && $('login').classList.contains('hidden')) loadTargets().catch(() => {}); }, 5000);
   setInterval(() => { if (S.live && !document.hidden && $('modal').classList.contains('hidden') && $('login').classList.contains('hidden')) refresh(); }, 5000);
 }
+
+// ------------------------------------------------------------------ login journal
+// Open on the user's own computer; on a server — with the administrator key from the link …/#admin=<key>.
+const ADMIN_KEY = 'dbash.admin';
+(function takeAdminKey() {
+  const m = location.hash.match(/admin=([\w-]+)/);
+  if (!m) return;
+  try { sessionStorage.setItem(ADMIN_KEY, m[1]); } catch (e) { /* storage unavailable */ }
+  history.replaceState(null, '', location.pathname + location.search);    // the key does not stay in the address bar
+})();
+const adminKey = () => { try { return sessionStorage.getItem(ADMIN_KEY) || ''; } catch (e) { return ''; } };
+const LOG_EVENTS = { login: 'Вход по паролю', server: 'База сервера', demo: 'Демо-вход', logout: 'Выход', blocked: 'Блокировка' };
+
+async function openLoginLog() {
+  $('m-title').textContent = 'Журнал входов';
+  $('m-filter').classList.add('hidden');
+  $('m-body').innerHTML = `<div class="logbar">
+      <label class="fld">Период <select id="lg-days"><option value="1">сутки</option><option value="7">7 дней</option>
+        <option value="30">30 дней</option><option value="92" selected>3 месяца</option></select></label>
+      <label class="fld">Событие <select id="lg-event"><option value="">все</option>${Object.entries(LOG_EVENTS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></label>
+      <label class="fld"><input type="checkbox" id="lg-fail"> только неудачные</label>
+      <div class="spacer"></div><button id="lg-csv" title="Выгрузить журнал за выбранный период">Скачать CSV</button>
+    </div><div id="lg-stats" class="muted small"></div><div id="lg-table" class="tbl"><div class="empty">Загрузка…</div></div>`;
+  $('modal').classList.add('over-login');
+  $('modal').classList.remove('hidden');
+  const load = async () => {
+    const u = new URL('/api/login-log', location.origin);
+    u.searchParams.set('days', $('lg-days').value);
+    if ($('lg-event').value) u.searchParams.set('event', $('lg-event').value);
+    if ($('lg-fail').checked) u.searchParams.set('ok', '0');
+    const r = await fetch(u, { credentials: 'same-origin', headers: { 'X-Admin-Token': adminKey() } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { $('lg-table').innerHTML = `<div class="empty">${esc(j.detail || r.status)}</div>`; return; }
+    const st = j.stats;
+    $('lg-stats').textContent = `Записей: ${st.total} (удачных ${st.ok}, неудачных ${st.failed}), разных IP: ${st.ips}. `
+      + `Журнал хранится ${j.keep_days} дней${j.rows.length < st.total ? `; показаны последние ${j.rows.length}` : ''}.`;
+    $('lg-table').innerHTML = !j.rows.length ? '<div class="empty">Записей нет</div>' : `<table><thead><tr>
+      <th>Время</th><th>Событие</th><th>Результат</th><th>IP</th><th>База</th><th>Пользователь БД</th><th>Подключение</th><th>Сообщение</th></tr></thead><tbody>${
+      j.rows.map((x) => `<tr class="${x.ok ? '' : 'fail'}"><td class="mono">${fmtTs(x.ts)}</td><td>${esc(LOG_EVENTS[x.event] || x.event)}</td>
+        <td>${x.ok ? '<span class="badge ok">успешно</span>' : '<span class="badge bad">отказ</span>'}</td>
+        <td class="mono" title="${esc(x.user_agent || '')}">${esc(x.ip || '')}</td><td>${esc(x.target || '')}${x.kind ? ` <span class="muted small">${esc(KIND_LABEL[x.kind] || x.kind)}</span>` : ''}</td>
+        <td>${esc(x.db_user || '')}</td><td class="mono small">${esc(x.dsn || '')}</td><td><div class="txt" title="${esc(x.message || '')}">${esc(x.message || '')}</div></td></tr>`).join('')}</tbody></table>`;
+  };
+  ['lg-days', 'lg-event', 'lg-fail'].forEach((id) => { $(id).onchange = load; });
+  $('lg-csv').onclick = async () => {
+    const u = new URL('/api/login-log.csv', location.origin);
+    u.searchParams.set('days', $('lg-days').value);
+    const r = await fetch(u, { credentials: 'same-origin', headers: { 'X-Admin-Token': adminKey() } });
+    if (!r.ok) { toast('Не удалось выгрузить журнал'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob()); a.download = `login_log_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  await load();
+}
+$('logBtn').onclick = openLoginLog;
+$('dblog').onclick = openLoginLog;
+getDefaults().then((d) => {
+  const show = !!(d.login_log_local || adminKey());
+  $('logBtn').classList.toggle('hidden', !show);
+  $('dblog').classList.toggle('hidden', !show);
+}).catch(() => {});
 
 (async function main() {
   const me = await (await fetch('/api/me', { credentials: 'same-origin' })).json();

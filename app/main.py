@@ -146,6 +146,7 @@ def _housekeeping():
     while True:
         try:
             store.purge(float(CONFIG.get("retention_days", 3)))
+            store.purge_login_log(float(CONFIG.get("login_log_days", LOGIN_LOG_DAYS)))
         except Exception as e:  # noqa: BLE001
             log.warning("purge failed: %s", e)
         time.sleep(3600)
@@ -242,6 +243,37 @@ def _server_db_info(name: str) -> dict:
             "load_available": name == _load_target(), "load": bool(LOADGENS.get(name))}
 
 
+# ----------------------------------------------------------------------------- login journal
+
+LOGIN_LOG_DAYS = 92          # three months
+
+
+def _client_ip(request: Request) -> str:
+    return request.headers.get("x-real-ip") or (request.client.host if request.client else "?")
+
+
+def _audit(request: Request, event: str, ok: bool, **kw):
+    """One record of the login journal; never the password. A failure here must not break the login."""
+    try:
+        store.log_login(event=event, ok=ok, ip=_client_ip(request),
+                        user_agent=request.headers.get("user-agent"), **kw)
+    except Exception as e:  # noqa: BLE001
+        log.warning("login journal: %s", e)
+
+
+def _journal_access(request: Request) -> bool:
+    """The journal holds visitors' addresses: it is open on the user's own computer (desktop version)
+    and on a server only with the administrator key (ASHV_ADMIN_TOKEN, header X-Admin-Token or ?token=)."""
+    token = os.environ.get("ASHV_ADMIN_TOKEN", "")
+    given = request.headers.get("x-admin-token") or request.query_params.get("token") or ""
+    if token and given and hmac.compare_digest(token.encode(), given.encode()):
+        return True
+    host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]").lower()
+    proxied = request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for")
+    return (not proxied and (request.client.host if request.client else "") in ("127.0.0.1", "::1")
+            and host in ("127.0.0.1", "localhost", "::1"))
+
+
 def _ensure_demo_session(request: Request):
     """Demo mode: a visitor without a session is connected to the default database at once."""
     if not demo_mode() or _session(request)[1]:
@@ -255,6 +287,8 @@ def _ensure_demo_session(request: Request):
         SESSIONS[tok] = {"targets": set(targets), "demo": True,
                          "exp": time.time() + float(CONFIG.get("session_hours", 12)) * 3600}
     request.state.demo_token = tok
+    _audit(request, "demo", True, target=target, kind=dbt.kind_of(COLLECTORS[target].cfg) if target in COLLECTORS else None,
+           message="демо-режим: вход без пароля")
     log.info("demo session for %s opened from %s", target,
              request.headers.get("x-real-ip") or (request.client.host if request.client else "?"))
     return tok
@@ -271,7 +305,8 @@ async def require_login(request: Request, call_next):
     path = request.url.path
     new_demo = (_ensure_demo_session(request)
                 if path.startswith("/api/") and path not in ("/api/health", "/api/defaults", "/api/logout",
-                                                             "/api/local-connections") else None)
+                                                             "/api/local-connections", "/api/login-log",
+                                                             "/api/login-log.csv") else None)
     if new_demo:
         response = await require_login_inner(request, call_next)
         _set_cookie(request, response, new_demo)
@@ -282,7 +317,8 @@ async def require_login(request: Request, call_next):
 async def require_login_inner(request: Request, call_next):
     path = request.url.path
     if path.startswith("/api/") and path not in ("/api/login", "/api/logout", "/api/defaults", "/api/health", "/api/me",
-                                                 "/api/connect-server", "/api/server-load", "/api/local-connections"):
+                                                 "/api/connect-server", "/api/server-load", "/api/local-connections",
+                                                 "/api/login-log", "/api/login-log.csv"):
         _, s = _session(request)
         if not s:
             return JSONResponse({"detail": "login required"}, status_code=401)
@@ -297,7 +333,7 @@ async def require_login_inner(request: Request, call_next):
 
 
 @app.get("/api/defaults")
-def defaults():
+def defaults(request: Request):
     """Connection form defaults and the server's own (demo) database, which the list shows first."""
     d = CONFIG.get("login_default", {})
     kind = dbt.norm_kind(d.get("type"))
@@ -309,7 +345,7 @@ def defaults():
             "server_open": _server_open(), "server_load": bool(_load_target() and LOADGENS.get(_load_target())),
             "server_load_available": bool(_load_target()),
             "max_load_sessions": MAX_USER_LOAD_SESSIONS,
-            "local_store": LOCAL_STORE}
+            "local_store": LOCAL_STORE, "login_log_local": _journal_access(request)}
 
 
 # Desktop version: the saved connections live in SQLite — table connections in ASHV_CONN_DB, or in ASHV_DB if unset.
@@ -413,6 +449,10 @@ def connect_server(request: Request, response: Response, body: Optional[dict] = 
             s = SESSIONS[tok] = {"targets": set()}
         s["targets"].add(target)
         s["exp"] = time.time() + float(CONFIG.get("session_hours", 12)) * 3600
+    c = COLLECTORS.get(target)
+    _audit(request, "server", True, target=target, kind=dbt.kind_of(c.cfg) if c else None,
+           db_user=c.cfg.get("user") if c else None, dsn=c.cfg.get("dsn") if c else None,
+           message="база сервера без пароля")
     _set_cookie(request, response, tok)
     return {"target": target}
 
@@ -434,6 +474,7 @@ def _too_many_fails(ip: str) -> bool:
 def login(request: Request, response: Response, body: dict = Body(...)):
     ip = request.headers.get("x-real-ip") or (request.client.host if request.client else "?")
     if _too_many_fails(ip):
+        _audit(request, "blocked", False, message="слишком много неудачных попыток за 10 минут")
         raise HTTPException(429, "Слишком много неудачных попыток входа, повторите через 10 минут")
     host = str(body.get("host", "")).strip()
     service = str(body.get("service", "")).strip()
@@ -464,6 +505,8 @@ def login(request: Request, response: Response, body: dict = Body(...)):
             and existing.cfg.get("user", "").lower() == user.lower()):
         if not hmac.compare_digest(existing._password().encode(), password.encode()):
             _fails.setdefault(ip, []).append(time.time())
+            _audit(request, "login", False, kind=kind, db_user=user, dsn=dsn, target=existing.name_,
+                   message=dbt.bad_password(kind))
             raise HTTPException(401, dbt.bad_password(kind))
     else:
         try:
@@ -474,6 +517,7 @@ def login(request: Request, response: Response, body: dict = Body(...)):
             if dbt.auth_failure(kind, msg):
                 _fails.setdefault(ip, []).append(time.time())
             log.info("login failed for %s@%s from %s: %s", user, key, ip, msg)
+            _audit(request, "login", False, kind=kind, db_user=user, dsn=dsn, message=msg)
             raise HTTPException(401, msg)
 
     with _lock:
@@ -500,6 +544,8 @@ def login(request: Request, response: Response, body: dict = Body(...)):
         s["exp"] = time.time() + float(CONFIG.get("session_hours", 12)) * 3600
         note = _apply_load(existing, dsn, user, password, body.get("load") or {})
     _set_cookie(request, response, tok)
+    _audit(request, "login", True, kind=kind, db_user=user, dsn=dsn, target=existing.name_,
+           message=("SYSDBA; " if mode else "") + ("нагрузочное тестирование" if (body.get("load") or {}).get("enabled") else ""))
     return {"target": existing.name_, "load_note": note}
 
 
@@ -570,7 +616,9 @@ def disconnect(request: Request, target: str):
 
 @app.post("/api/logout")
 def logout(request: Request, response: Response):
-    tok, _ = _session(request)
+    tok, s = _session(request)
+    if s:
+        _audit(request, "logout", True, target=", ".join(sorted(s["targets"])) or None)
     if tok:
         SESSIONS.pop(tok, None)
     response.delete_cookie(COOKIE)
@@ -834,6 +882,35 @@ def awr_native_report(target: str, begin: int, end: int):
         raise HTTPException(409, str(e).splitlines()[0][:300])
     return Response(html, media_type="text/html; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="awr_{target}_{begin}_{end}.html"'})
+
+
+@app.get("/api/login-log")
+def login_log_api(request: Request, days: float = 92, limit: int = 2000, event: str = "", ok: Optional[int] = None):
+    if not _journal_access(request):
+        raise HTTPException(403, "Журнал входов доступен на этом компьютере или по ключу администратора")
+    days = max(0.01, min(days, float(CONFIG.get("login_log_days", LOGIN_LOG_DAYS))))
+    since = int(time.time() - days * 86400)
+    return {"days": days, "keep_days": CONFIG.get("login_log_days", LOGIN_LOG_DAYS),
+            "stats": store.login_stats(since),
+            "rows": store.login_log(since, max(1, min(limit, 20000)), event, None if ok is None else bool(ok))}
+
+
+@app.get("/api/login-log.csv")
+def login_log_csv(request: Request, days: float = 92):
+    if not _journal_access(request):
+        raise HTTPException(403, "Журнал входов доступен на этом компьютере или по ключу администратора")
+    import csv
+    import io
+    from datetime import datetime
+    since = int(time.time() - min(days, float(CONFIG.get("login_log_days", LOGIN_LOG_DAYS))) * 86400)
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";")
+    w.writerow(["Время", "Событие", "Успешно", "IP", "База", "Тип", "Пользователь БД", "Подключение", "Сообщение", "Браузер"])
+    for r in store.login_log(since, 1_000_000):
+        w.writerow([datetime.fromtimestamp(r["ts"]).strftime("%Y-%m-%d %H:%M:%S"), r["event"], "да" if r["ok"] else "нет",
+                    r["ip"], r["target"], r["kind"], r["db_user"], r["dsn"], r["message"], r["user_agent"]])
+    return Response("\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="login_log.csv"'})
 
 
 @app.get("/api/health")

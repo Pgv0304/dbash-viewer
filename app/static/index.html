@@ -15,6 +15,7 @@
   </label>
   <span id="demoTag" class="status error hidden" title="Демо-режим: подключение без пароля, на базе идёт имитация случайной нагрузки (ASHV_MODE=demo)">Демо</span>
   <button id="addDb" title="Список баз данных: подключиться, добавить, изменить, удалить">Базы данных</button>
+  <button id="logBtn" class="hidden" title="Журнал входов в приложение за последние 3 месяца">Журнал входов</button>
   <button id="awrBtn" title="Отчёт о производительности по снимкам статистики и рекомендации по настройке">Отчёт</button>
   <span id="status" class="status"></span>
   <span id="loadTag" class="status hidden"></span>
@@ -111,6 +112,7 @@
     <div id="dberr" class="lerr"></div>
     <div class="lrow lbtns">
       <button type="button" id="dbclose" class="hidden">Закрыть</button>
+      <button type="button" id="dblog" class="hidden" title="Журнал входов в приложение за последние 3 месяца">Журнал входов</button>
       <div class="spacer"></div>
       <button type="button" id="dbadd" class="primary">＋ Добавить базу</button>
     </div>

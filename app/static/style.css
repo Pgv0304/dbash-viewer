@@ -199,3 +199,9 @@ button.danger { border-color: var(--err); color: #ffb4ae; }
   box-shadow: 0 6px 24px rgba(0,0,0,.4); transition: opacity .6s; }
 .toast.out { opacity: 0; }
 .dbacts button.on { border-color: #f0b45a; color: #f0b45a; }
+
+/* login journal */
+.logbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+#lg-table tr.fail td { background: rgba(248, 81, 73, .08); }
+.badge.bad { background: rgba(248, 81, 73, .18); color: #f85149; }
+.modal.over-login { z-index: 35; }   /* the journal may be opened from the database list */
