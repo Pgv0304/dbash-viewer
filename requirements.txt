@@ -4,4 +4,5 @@ uvicorn[standard]==0.33.0; python_version < '3.9'
 oracledb==2.5.1
 cryptography; python_version >= '3.9'
 cryptography==42.0.8; python_version < '3.9'
-psycopg[binary]==3.2.10
+psycopg[binary]==3.2.10; python_version >= '3.9'
+psycopg[binary]==3.2.3; python_version < '3.9'   # libpq 3.2.10 требует Windows 8+ (GetSystemTimePreciseAsFileTime)

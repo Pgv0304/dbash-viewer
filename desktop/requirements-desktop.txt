@@ -2,7 +2,8 @@ fastapi==0.115.6
 uvicorn==0.34.0; python_version >= '3.9'
 uvicorn==0.33.0; python_version < '3.9'   # сборка для Windows 7/8.1 — на Python 3.8
 oracledb==2.5.1
-psycopg[binary]==3.2.10
+psycopg[binary]==3.2.10; python_version >= '3.9'
+psycopg[binary]==3.2.3; python_version < '3.9'   # libpq 3.2.10 требует Windows 8+ (GetSystemTimePreciseAsFileTime)
 cryptography; python_version >= '3.9'
 cryptography==42.0.8; python_version < '3.9'   # последняя, собранная Rust с поддержкой Windows 7
 pywebview==5.4

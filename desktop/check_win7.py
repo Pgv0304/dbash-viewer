@@ -23,6 +23,8 @@ WIN8_DLLS = ("api-ms-win-core-synch-l1-2", "api-ms-win-core-path-l1-1", "api-ms-
 
 
 def main(exe: str) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")       # the Windows console code page cannot print Cyrillic
     arch = CArchiveReader(exe)
     bad = 0
     for name in arch.toc:
