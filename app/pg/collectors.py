@@ -392,6 +392,8 @@ _HINTS = [
     ("password authentication failed", "неверное имя пользователя или пароль"),
     ("no pg_hba.conf entry", "сервер не разрешает подключение с этого адреса: добавьте строку в pg_hba.conf"),
     ("connection refused", "на этом хосте и порту не запущен PostgreSQL"),
+    ("socket is not connected", "на этом хосте и порту не запущен PostgreSQL"),     # Windows: WSAENOTCONN
+    ("could not receive data from server", "сервер закрыл соединение: на этом порту не PostgreSQL или он не запущен"),
     ("could not translate host name", "хост не найден"),
     ("nodename nor servname", "хост не найден"),
     ("timeout expired", "истекло время подключения: хост недоступен"),
