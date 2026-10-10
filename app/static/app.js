@@ -74,10 +74,47 @@ function filterParams(extra = {}) {
   return p;
 }
 
-// ------------------------------------------------------------------ chart
-const chart = echarts.init($('chart'), 'dark', { renderer: 'canvas' });
-let lastActivity = null;
+// ------------------------------------------------------------------ theme: dark | light | auto (as the system)
+const THEME_KEY = 'dbash.theme';
+const THEMES = { auto: ['◐', 'Оформление: как в системе'], light: ['☀', 'Оформление: светлое'], dark: ['☾', 'Оформление: тёмное'] };
+const themeChoice = () => { try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch (e) { return 'auto'; } };
+const lightMedia = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
+const themeNow = () => { const t = themeChoice(); return t === 'auto' ? (lightMedia && lightMedia.matches ? 'light' : 'dark') : t; };
+const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function applyTheme() {
+  document.documentElement.dataset.theme = themeNow();
+  const [icon, title] = THEMES[themeChoice()] || THEMES.auto;
+  for (const id of ['themeBtn', 'dbtheme']) { const b = $(id); if (b) { b.textContent = icon; b.title = `${title} — нажмите, чтобы сменить`; } }
+  if (typeof initChart === 'function') initChart();
+}
+function cycleTheme() {
+  const order = ['auto', 'light', 'dark'];
+  const next = order[(order.indexOf(themeChoice()) + 1) % order.length];
+  try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* storage unavailable */ }
+  applyTheme();
+  toast(THEMES[next][1]);
+}
+$('themeBtn').onclick = cycleTheme;
+$('dbtheme').onclick = cycleTheme;
+if (lightMedia && lightMedia.addEventListener) lightMedia.addEventListener('change', () => { if (themeChoice() === 'auto') applyTheme(); });
 
+// ------------------------------------------------------------------ chart
+let chart = null;
+let lastActivity = null;
+let chartTheme = null;
+
+// the chart is re-created when the colour scheme changes (ECharts themes are set at creation)
+function initChart() {
+  const theme = themeNow();
+  if (chart && chartTheme === theme) return;
+  if (chart) chart.dispose();
+  chartTheme = theme;
+  chart = echarts.init($('chart'), theme === 'dark' ? 'dark' : null, { renderer: 'canvas' });
+  bindChart();
+  if (lastActivity) renderChart(lastActivity);
+}
+
+function bindChart() {
 chart.on('click', (p) => {
   if (p.componentType !== 'series' || !p.seriesName || p.seriesName === 'CPU cores') return;
   const s = lastActivity.series.find((x) => x.name === p.seriesName);
@@ -92,7 +129,9 @@ chart.on('brushEnd', (e) => {
   }
   renderSelInfo(); loadDetails();
 });
-window.addEventListener('resize', () => chart.resize());
+}
+window.addEventListener('resize', () => chart && chart.resize());
+applyTheme();                 // creates the chart in the chosen colour scheme
 
 function renderChart(a) {
   lastActivity = a;
@@ -114,11 +153,11 @@ function renderChart(a) {
   chart.setOption({
     backgroundColor: 'transparent', animation: false,
     grid: { left: 50, right: 24, top: 40, bottom: 30 },
-    legend: { type: 'scroll', top: 4, textStyle: { color: '#ccc' }, data: series.filter((s) => s.name !== 'CPU cores').map((s) => s.name) },
+    legend: { type: 'scroll', top: 4, textStyle: { color: cssVar('--chart-text') }, data: series.filter((s) => s.name !== 'CPU cores').map((s) => s.name) },
     tooltip: { trigger: 'axis', axisPointer: { type: 'line' }, order: 'seriesDesc',
       valueFormatter: (v) => (v == null ? '—' : v.toFixed(2)) },
     xAxis: { type: 'time', min: a.from * 1000, max: Math.min(a.to, a.times[a.times.length - 1] + a.bucket) * 1000 },
-    yAxis: { type: 'value', name: 'Active Sessions', nameTextStyle: { color: '#888' }, splitLine: { lineStyle: { color: '#232a33' } },
+    yAxis: { type: 'value', name: 'Active Sessions', nameTextStyle: { color: cssVar('--muted') }, splitLine: { lineStyle: { color: cssVar('--chart-grid') } },
       max: (v) => Math.max(v.max, a.cpu_count ? a.cpu_count * 1.1 : 0, 1) },
     toolbox: { right: 20, top: 0, feature: { brush: { type: ['lineX', 'clear'], title: { lineX: 'Выделить интервал', clear: 'Сбросить' } } } },
     brush: { xAxisIndex: 0, brushLink: 'all', brushMode: 'single', throttleType: 'debounce', throttleDelay: 300,
@@ -270,11 +309,11 @@ async function openSql(sqlId) {
     ${d.normalized && d.normalized !== d.text ? `<h4>Нормализованный текст (pg_stat_statements)</h4><pre>${esc(d.normalized)}</pre>` : ''}
     ${d.plan ? `<h4>План выполнения (${pgsql ? 'EXPLAIN' : 'DBMS_XPLAN.DISPLAY_CURSOR'})</h4><pre class="plan">${esc(d.plan)}</pre>` : ''}`;
   if (mChart) mChart.dispose();
-  mChart = echarts.init($('m-chart'), 'dark');
+  mChart = echarts.init($('m-chart'), themeNow() === 'dark' ? 'dark' : null);
   mChart.setOption({
     backgroundColor: 'transparent', animation: false, grid: { left: 40, right: 10, top: 10, bottom: 24 },
     tooltip: { trigger: 'axis', valueFormatter: (v) => (v == null ? '—' : v.toFixed(2)) },
-    xAxis: { type: 'time' }, yAxis: { type: 'value', splitLine: { lineStyle: { color: '#232a33' } } },
+    xAxis: { type: 'time' }, yAxis: { type: 'value', splitLine: { lineStyle: { color: cssVar('--chart-grid') } } },
     series: act.series.sort((x, y) => idx(x.name) - idx(y.name)).map((s) => ({
       name: s.name, type: 'line', stack: 'a', symbol: 'none', lineStyle: { width: 0 }, areaStyle: { opacity: 0.95 },
       color: WC_COLORS[s.name] || '#888', data: act.times.map((t, j) => [t * 1000, s.data[j]]) })),
