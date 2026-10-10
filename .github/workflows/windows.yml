@@ -58,9 +58,9 @@ jobs:
           $env:ASHV_HEADLESS = "1"
           $p = Start-Process dist/DBASHViewer.exe -PassThru
           $log = "$env:LOCALAPPDATA\DB ASH Viewer\dbash.log"
-          for ($i = 0; $i -lt 120; $i++) { if ((Test-Path $log) -and (Select-String -Path $log -Pattern "is serving" -Quiet)) { break }; Start-Sleep 1 }
-          Get-Content $log
-          $line = Select-String -Path $log -Pattern "is serving" | Select-Object -Last 1
+          for ($i = 0; $i -lt 120; $i++) { if ((Test-Path $log) -and (Select-String -Path $log -Encoding utf8 -Pattern "is serving" -Quiet)) { break }; Start-Sleep 1 }
+          Get-Content $log -Encoding utf8
+          $line = Select-String -Path $log -Encoding utf8 -Pattern "is serving" | Select-Object -Last 1
           if (-not $line) { throw "приложение не запустилось" }
           $url = [regex]::Match($line.Line, "http://127.0.0.1:\d+").Value
           Invoke-RestMethod "$url/api/health" | ConvertTo-Json

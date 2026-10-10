@@ -255,7 +255,10 @@ def main():
     if sys.stderr is None:
         sys.stderr = open(os.devnull, "w", encoding="utf-8")
     data = data_dir()
-    logging.basicConfig(filename=str(data / "dbash.log"), level=logging.INFO,
+    # UTF-8 explicitly: on Windows the default (locale) encoding cannot write Russian messages, and such
+    # lines would be silently dropped from the log
+    handler = logging.FileHandler(str(data / "dbash.log"), encoding="utf-8")
+    logging.basicConfig(handlers=[handler], level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     prepare_env(data)
     sys.path.insert(0, str(base_dir()))
