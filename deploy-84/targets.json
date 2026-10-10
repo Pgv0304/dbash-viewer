@@ -1,0 +1,58 @@
+{
+  "retention_days": 7,
+  "session_hours": 12,
+  "dynamic_idle_hours": 12,
+  "open_server_db": true,
+  "login_default": {
+    "type": "oracle",
+    "host": "84.54.28.45",
+    "port": 1521,
+    "service": "XE",
+    "user": "ASHV"
+  },
+  "host_aliases": {
+    "84.54.28.45": "host.docker.internal",
+    "84-54-28-45.sslip.io": "host.docker.internal",
+    "localhost": "host.docker.internal",
+    "127.0.0.1": "host.docker.internal"
+  },
+  "targets": [
+    {
+      "name": "XE@84.54.28.45",
+      "type": "oracle",
+      "dsn": "host.docker.internal:1521/XE",
+      "user": "ASHV",
+      "password_env": "XE_PASSWORD",
+      "source": "vsession",
+      "interval": 1,
+      "rac": false,
+      "include_background": true,
+      "display": "ASHV@84.54.28.45:1521/XE · Oracle 11g XE"
+    },
+    {
+      "name": "demo@84.54.28.45",
+      "type": "postgres",
+      "dsn": "pg:5432/demo",
+      "user": "dbash",
+      "password_env": "PG_PASSWORD",
+      "interval": 1,
+      "include_background": true,
+      "display": "dbash@84.54.28.45/demo · PostgreSQL 16",
+      "cpu_count": 1
+    }
+  ],
+  "demo_target": "XE@84.54.28.45",
+  "server_targets": [
+    "XE@84.54.28.45",
+    "demo@84.54.28.45"
+  ],
+  "load_target": "demo@84.54.28.45",
+  "demo_load": {
+    "type": "postgres",
+    "dsn": "pg:5432/demo",
+    "user": "pgload",
+    "password_env": "PGLOAD_PASSWORD",
+    "max_sessions": 2,
+    "autostart": false
+  }
+}

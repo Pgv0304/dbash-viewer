@@ -1,0 +1,6 @@
+# DB ASH Viewer: образ ASH Viewer (Python 3.12 + Oracle Instant Client 21) + драйвер PostgreSQL + код dbash
+FROM ashv-web:2026-10-10-srv
+RUN pip install --no-cache-dir "psycopg[binary]==3.2.10"
+WORKDIR /opt/dbash
+COPY app ./app
+ENV ASHV_DB=/data/dbash.db ASHV_CONFIG=/config/targets.json

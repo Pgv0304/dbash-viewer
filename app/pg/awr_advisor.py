@@ -98,7 +98,7 @@ class Advisor:
                 cmds.append("ALTER SYSTEM SET shared_buffers = '2GB';   -- ~25% ОЗУ; затем перезапуск")
             self.add(sev, "Память", "Низкое попадание в буферный кэш", ev, adv, cmds, self.top_sql("reads"))
         if sb is not None and sb <= 128 * MB:
-            self.add("warning", "Параметры", "shared_buffers по умолчанию (128 МБ)",
+            self.add("warning", "Параметры", f"shared_buffers = {_size(sb)}: значение для минимальных систем",
                      [f"shared_buffers = {_size(sb)}"],
                      ["Значение по умолчанию рассчитано на минимальные системы. Для выделенного сервера — около "
                       "25% ОЗУ; effective_cache_size — 50–75% ОЗУ (подсказка планировщику, без выделения памяти)."],

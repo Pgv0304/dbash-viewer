@@ -1,0 +1,47 @@
+# DB ASH Viewer (Oracle + PostgreSQL): https://84-54-28-45.sslip.io:95/ (nginx: /etc/nginx/sites-available/dbash-95)
+# Каталог /opt/dbash: compose.yaml, .env (пароли), config/targets.json, pg-init/, src/ (код для образа).
+# Обновление: собрать образ из src (Dockerfile.patch), поменять тег ниже, `docker compose up -d`.
+name: dbash
+
+services:
+  web:
+    image: dbash-web:2026-10-10
+    container_name: dbash
+    env_file: .env
+    environment:
+      ASHV_MODE: normal            # список баз; базы сервера открываются без пароля (open_server_db)
+    volumes:
+      - ./config:/config:ro
+      - dbash-data:/data
+    ports:
+      - "127.0.0.1:8095:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - pg
+    restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  # PostgreSQL 16 для демонстрации: снаружи не опубликован, доступен приложению по имени pg.
+  # Диск сервера почти заполнен: WAL ограничен 64 МБ (по умолчанию до 1 ГБ).
+  pg:
+    image: postgres:16-alpine
+    container_name: dbash-pg
+    environment:
+      POSTGRES_DB: demo
+      POSTGRES_PASSWORD: ${PG_SUPERUSER_PASSWORD}
+      PG_PASSWORD: ${PG_PASSWORD}
+      PGLOAD_PASSWORD: ${PGLOAD_PASSWORD}
+    command: >
+      postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
+               -c track_io_timing=on -c shared_buffers=64MB -c max_connections=40 -c work_mem=4MB
+               -c max_wal_size=64MB -c min_wal_size=32MB -c wal_keep_size=0
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./pg-init:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+volumes:
+  dbash-data:
+  pgdata:

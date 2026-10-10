@@ -84,7 +84,7 @@ def capture(conn, cpu_count: int = 0) -> dict:
          WHERE d.datname IS NOT NULL AND NOT db.datistemplate""")
     bg = _try(cur, "SELECT * FROM pg_stat_bgwriter")
     snap["bgwriter"] = bg[0] if bg else {}
-    cp = _try(cur, "SELECT * FROM pg_stat_checkpointer")              # PostgreSQL 17+
+    cp = _try(cur, "SELECT * FROM pg_stat_checkpointer") if vnum >= 170000 else []   # PostgreSQL 17+
     if cp:
         c = cp[0]
         snap["bgwriter"].update({"checkpoints_timed": c.get("num_timed"), "checkpoints_req": c.get("num_requested"),
