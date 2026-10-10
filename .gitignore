@@ -1,0 +1,20 @@
+# secrets and server-specific config
+.env
+*/.env
+config/targets.json
+# python / build output
+__pycache__/
+*.pyc
+.venv*/
+build/
+dist/
+*.spec
+/vendor/
+desktop/icon/
+# runtime data
+*.db
+*.db-*
+data/
+.DS_Store
+~$*
+pg.txt

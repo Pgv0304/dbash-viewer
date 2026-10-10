@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn==0.34.0; python_version >= '3.9'
+uvicorn==0.33.0; python_version < '3.9'   # сборка для Windows 7/8.1 — на Python 3.8
+oracledb==2.5.1
+psycopg[binary]==3.2.10
+cryptography; python_version >= '3.9'
+cryptography==42.0.8; python_version < '3.9'   # последняя, собранная Rust с поддержкой Windows 7
+pywebview==5.4
+pyinstaller==6.16.0
+pillow
+pefile; sys_platform == 'win32'   # desktop/check_win7.py

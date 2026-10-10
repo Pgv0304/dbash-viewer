@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DB ASH Viewer</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/vendor/echarts.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">▦</span> DB ASH Viewer <small>Oracle · PostgreSQL</small></div>
+  <label class="fld">БД
+    <select id="target"></select>
+  </label>
+  <span id="demoTag" class="status error hidden" title="Демо-режим: подключение без пароля, на базе идёт имитация случайной нагрузки (ASHV_MODE=demo)">Демо</span>
+  <button id="addDb" title="Список баз данных: подключиться, добавить, изменить, удалить">Базы данных</button>
+  <button id="awrBtn" title="Отчёт о производительности по снимкам статистики и рекомендации по настройке">Отчёт</button>
+  <span id="status" class="status"></span>
+  <span id="loadTag" class="status hidden"></span>
+  <span id="dbinfo" class="dbinfo"></span>
+  <div class="spacer"></div>
+  <div class="seg" id="ranges">
+    <button data-r="300">5м</button><button data-r="900" class="on">15м</button>
+    <button data-r="3600">1ч</button><button data-r="10800">3ч</button>
+    <button data-r="21600">6ч</button><button data-r="86400">24ч</button>
+    <button data-r="custom" title="Произвольный интервал">📅</button>
+  </div>
+  <div id="custom" class="custom hidden">
+    <input type="datetime-local" id="cfrom" step="1"> — <input type="datetime-local" id="cto" step="1">
+    <button id="capply">Показать</button>
+  </div>
+  <button id="live" class="live on" title="Автообновление">● LIVE</button>
+  <button id="logout" title="Выйти">Выйти</button>
+</header>
+
+<section class="chartbar">
+  <div class="crumbs" id="crumbs"></div>
+  <div class="spacer"></div>
+  <label class="fld">Группировка
+    <select id="group">
+      <option value="wait_class">Класс ожидания</option>
+      <option value="event">Событие</option>
+      <option value="sql_id">SQL ID</option>
+      <option value="session">Сессия</option>
+      <option value="username">Пользователь</option>
+      <option value="module">Модуль</option>
+      <option value="program">Программа</option>
+      <option value="machine">Машина</option>
+      <option value="sql_opname">Операция</option>
+    </select>
+  </label>
+</section>
+<div id="chart" class="chart"></div>
+<div class="selinfo" id="selinfo"></div>
+
+<main class="grid">
+  <section class="panel">
+    <h2>Top SQL</h2>
+    <div id="topsql" class="tbl"></div>
+  </section>
+  <section class="panel">
+    <h2>Top Sessions</h2>
+    <div id="topsess" class="tbl"></div>
+  </section>
+  <section class="panel wide">
+    <div class="tabs" id="tabs">
+      <button data-d="event" class="on">События</button>
+      <button data-d="username">Пользователи</button>
+      <button data-d="module">Модули</button>
+      <button data-d="program">Программы</button>
+      <button data-d="machine">Машины</button>
+      <button data-d="sql_opname">Операции</button>
+      <button data-d="plan_hash">Планы (hash)</button>
+      <button data-d="blocking">Блокировки</button>
+    </div>
+    <div id="toptab" class="tbl"></div>
+  </section>
+</main>
+
+<div id="modal" class="modal hidden">
+  <div class="dlg">
+    <div class="dlg-h"><h3 id="m-title"></h3>
+      <div class="spacer"></div>
+      <button id="m-filter">Фильтровать по нему</button>
+      <button id="m-close">✕</button></div>
+    <div class="dlg-b" id="m-body"></div>
+  </div>
+</div>
+<div id="awr" class="awr hidden">
+  <div class="awr-bar">
+    <b>Отчёт о производительности</b> <span class="muted" id="awr-target"></span>
+    <label class="fld">с <select id="awr-begin"></select></label>
+    <label class="fld">по <select id="awr-end"></select></label>
+    <button id="awr-go" class="primary">Сформировать</button>
+    <button id="awr-snap" title="Сохранить текущую накопленную статистику базы">Снять снимок</button>
+    <button id="awr-dl" disabled title="Сохранить отчёт одним HTML-файлом">Скачать HTML</button>
+    <span id="awr-native" class="small"></span>
+    <div class="spacer"></div>
+    <button id="awr-close" title="Закрыть (Esc)">✕</button>
+  </div>
+  <div class="awr-info muted small" id="awr-info"></div>
+  <div class="awr-body" id="awr-body"><div class="empty">Выберите начальный и конечный снимки и нажмите «Сформировать».</div></div>
+</div>
+
+<div id="login" class="login hidden">
+  <section id="dbview" class="lcard dbcard" aria-labelledby="dbtitle">
+    <div class="brand"><span class="logo">▦</span> DB ASH Viewer <small>Oracle · PostgreSQL</small></div>
+    <h2 id="dbtitle" class="lsub">Базы данных</h2>
+    <div id="dblist" class="dblist" role="list"></div>
+    <div id="dberr" class="lerr"></div>
+    <div class="lrow lbtns">
+      <button type="button" id="dbclose" class="hidden">Закрыть</button>
+      <div class="spacer"></div>
+      <button type="button" id="dbadd" class="primary">＋ Добавить базу</button>
+    </div>
+    <p class="lhint" id="storeHint">Подключения и сохранённые пароли хранятся только в этом браузере.</p>
+  </section>
+
+  <form id="lform" class="lcard hidden" autocomplete="off">
+    <div class="brand"><span class="logo">▦</span> DB ASH Viewer <small>Oracle · PostgreSQL</small></div>
+    <p class="lsub" id="ltitle">Новое подключение</p>
+    <label>Тип базы данных<select name="type" id="f-type"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option></select></label>
+    <label>Название<input name="name" id="f-name" placeholder="например, Продуктив XE"></label>
+    <div class="lrow">
+      <label>Хост<input name="host" id="f-host" required></label>
+      <label class="port">Порт<input name="port" id="f-port" type="number" min="1" max="65535" required></label>
+    </div>
+    <label id="f-service-label">Сервис (service name)<input name="service" id="f-service" required></label>
+    <label>Пользователь<input name="user" id="f-user" required autocomplete="username"></label>
+    <label>Пароль<input name="password" id="f-password" type="password" autocomplete="current-password"></label>
+    <label class="check"><input type="checkbox" name="remember" id="f-remember" checked> Запомнить пароль в этом браузере</label>
+    <div class="lrow" id="f-orarow">
+      <label>Режим<select name="mode" id="f-mode"><option value="">Обычный</option><option value="SYSDBA">SYSDBA</option></select></label>
+      <label>Источник<select name="source" id="f-source">
+        <option value="vsession">V$SESSION</option>
+        <option value="ash" title="Требует лицензии Diagnostics Pack">ASH (Diag. Pack)</option></select></label>
+    </div>
+    <fieldset class="loadbox" id="f-loadbox">
+      <label class="check"><input type="checkbox" name="load_enabled" id="f-load"> Нагрузочное тестирование</label>
+      <p class="lhint" id="f-loadhint"><span id="f-loadhint-ora">По умолчанию выключено. Генератор работает под этим же пользователем: создаёт таблицы
+        LG_DATA, LG_LOG, LG_HOT (около 20 МБ) и по кругу запускает случайную нагрузку. Нужны права CREATE TABLE и квота.</span>
+        <span id="f-loadhint-pg" class="hidden">По умолчанию выключено. Генератор работает под этим же пользователем: создаёт схему
+        pgash_load (около 60–80 МБ) и по кругу запускает случайную нагрузку. Нужно право CREATE в базе.</span>
+        Не включайте на рабочей базе.
+        Нагрузка — свойство базы: если это база сервера, флажок включает и выключает её нагрузку (как кнопка в списке).</p>
+    </fieldset>
+    <div id="lerr" class="lerr"></div>
+    <div class="lrow lbtns">
+      <button type="button" id="lcancel">← К списку</button>
+      <div class="spacer"></div>
+      <button type="submit" id="lsubmit" class="primary">Подключиться</button>
+    </div>
+    <p class="lhint" id="f-privs">Пользователю мониторинга нужны права CREATE SESSION и SELECT_CATALOG_ROLE (или SELECT ANY DICTIONARY).</p>
+  </form>
+</div>
+<script src="/static/intro.js"></script>
+<script src="/static/app.js"></script>
+<script src="/static/awr.js"></script>
+</body>
+</html>
