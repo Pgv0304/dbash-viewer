@@ -1,4 +1,4 @@
-# DB ASH Viewer (Oracle + PostgreSQL): https://84-54-28-45.sslip.io:95/ (nginx: /etc/nginx/sites-available/dbash-95)
+# DB ASH Viewer (Oracle + PostgreSQL): https://84-54-28-45.sslip.io:96/ (nginx: /etc/nginx/sites-available/dbash-96)
 # Каталог /opt/dbash: compose.yaml, .env (пароли), config/targets.json, src/ (код для образа).
 # PostgreSQL 16 — внутри контейнера oracle11 (настройка: oracle11-pg/setup.sh); oracle11 подключён к сети dbash_default.
 # Обновление: собрать образ из src (Dockerfile.patch), поменять тег ниже, `docker compose up -d`.

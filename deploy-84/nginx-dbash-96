@@ -1,8 +1,9 @@
-# /etc/nginx/sites-available/dbash-95 (+ ссылка в sites-enabled; перед reload — nginx -t)
-# DB ASH Viewer (Oracle + PostgreSQL): https://84-54-28-45.sslip.io:95/
+# /etc/nginx/sites-available/dbash-96 (+ ссылка в sites-enabled; перед reload — nginx -t)
+# Порт 95 не подходит: браузеры блокируют его как «небезопасный» (ERR_UNSAFE_PORT).
+# DB ASH Viewer (Oracle + PostgreSQL): https://84-54-28-45.sslip.io:96/
 # Контейнер dbash слушает 127.0.0.1:8095 (конфиг /opt/dbash).
 server {
-    listen 95 ssl;
+    listen 96 ssl;
     http2 on;
     server_name 84-54-28-45.sslip.io 84.54.28.45;
 
@@ -10,9 +11,9 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/84-54-28-45.sslip.io/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    error_page 497 =301 https://84-54-28-45.sslip.io:95$request_uri;
+    error_page 497 =301 https://84-54-28-45.sslip.io:96$request_uri;
     if ($host != "84-54-28-45.sslip.io") {
-        return 301 https://84-54-28-45.sslip.io:95$request_uri;
+        return 301 https://84-54-28-45.sslip.io:96$request_uri;
     }
 
     location / {
