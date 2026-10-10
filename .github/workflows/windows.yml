@@ -66,11 +66,13 @@ jobs:
           Invoke-RestMethod "$url/api/health" | ConvertTo-Json
           # драйвер PostgreSQL внутри exe: вход в несуществующий сервер должен дать ошибку подключения PostgreSQL
           $body = '{"type":"postgres","host":"127.0.0.1","port":5432,"service":"postgres","user":"x","password":"y"}'
-          try { Invoke-RestMethod "$url/api/login" -Method Post -ContentType 'application/json' -Body $body; $pg = "вход прошёл?" }
-          catch { $pg = $_.ErrorDetails.Message }
-          "PostgreSQL: $pg"
+          $r = Invoke-WebRequest "$url/api/login" -Method Post -ContentType 'application/json' -Body $body -SkipHttpErrorCheck
+          $pg = [string]$r.Content
+          "PostgreSQL: HTTP $($r.StatusCode) $pg"
+          Select-String -Path $log -Encoding utf8 -Pattern "login failed" | Select-Object -Last 1 | ForEach-Object { $_.Line }
           Stop-Process -Id $p.Id -Force
-          if ($pg -match "No module|ModuleNotFound|ImportError|libpq") { throw "драйвер PostgreSQL не загрузился" }
+          if ($pg -match "No module|ModuleNotFound|ImportError|DLL load") { throw "драйвер PostgreSQL не загрузился" }
+          if ($pg -notmatch "PostgreSQL|connection") { throw "неожиданный ответ входа в PostgreSQL" }
           if ($line.Line -notmatch "thick mode: True") { throw "Oracle Instant Client не загрузился" }
       - uses: actions/upload-artifact@v4
         with: { name: DBASHViewer-windows, path: dist/DBASHViewer.exe }
