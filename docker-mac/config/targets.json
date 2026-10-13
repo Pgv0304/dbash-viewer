@@ -1,0 +1,11 @@
+{
+  "retention_days": 7,
+  "session_hours": 720,
+  "dynamic_idle_hours": 720,
+  "open_server_db": true,
+  "host_aliases": {
+    "localhost": "host.docker.internal",
+    "127.0.0.1": "host.docker.internal"
+  },
+  "targets": []
+}

@@ -89,10 +89,12 @@ def _conn_file_target():
     except (OSError, ValueError) as e:
         log.warning("connection file %s unreadable: %s", path, e)
         return None
+    # в Docker «localhost» из pg.txt — это сам контейнер: адрес подменяется по host_aliases (host.docker.internal)
+    dsn = f'{_resolve_host(c["host"])}:{c["port"]}/{c["database"]}'
     name = f'{c["database"]}@{c["host"]}' + ("" if c["port"] == dbt.DEFAULT_PORT["postgres"] else f':{c["port"]}')
     targets = CONFIG.setdefault("targets", [])
     targets[:] = [t for t in targets if t.get("name") != name]
-    targets.insert(0, {"name": name, "type": "postgres", "dsn": f'{c["host"]}:{c["port"]}/{c["database"]}',
+    targets.insert(0, {"name": name, "type": "postgres", "dsn": dsn,
                        "user": c["user"], "password": c["password"], "interval": 1, "source_file": path})
     old = CONFIG.get("demo_target")
     if old and old != name:
@@ -103,7 +105,7 @@ def _conn_file_target():
     else:
         CONFIG["demo_target"] = name
         # «Нагрузка» button for this database: same account, switched on by hand only
-        CONFIG.setdefault("demo_load", {"type": "postgres", "dsn": f'{c["host"]}:{c["port"]}/{c["database"]}',
+        CONFIG.setdefault("demo_load", {"type": "postgres", "dsn": dsn,
                                         "user": c["user"], "password": c["password"], "max_sessions": 3,
                                         "autostart": False})
     CONFIG.setdefault("open_server_db", True)

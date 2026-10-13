@@ -1,0 +1,36 @@
+# DB ASH Viewer в Docker на Mac: http://127.0.0.1:8080/
+# Запуск:     cd docker-mac && docker compose up -d --build
+# Остановка:  docker compose down          (история в томе dbash-data сохраняется)
+# Журнал:     docker compose logs -f
+#
+# pg.txt из корня проекта — первая база в списке (открывается без пароля). «localhost» в pg.txt и в форме
+# подключения подменяется на host.docker.internal (config/targets.json), то есть на сам Mac.
+name: dbash-mac
+
+services:
+  web:
+    build:
+      context: ..
+      args:
+        INSTANT_CLIENT: "1"          # Oracle Instant Client — нужен для Oracle 11g
+    image: dbash:mac
+    container_name: dbash-mac
+    environment:
+      ORACLE_THICK: "1"
+      ASHV_MODE: normal
+      PGASH_CONN_FILE: /pg/pg.txt
+      TZ: Europe/Moscow
+      # ключ журнала входов: в Docker запросы приходят не с 127.0.0.1, поэтому журнал открывается
+      # ссылкой http://127.0.0.1:8080/#admin=<ключ> (ключ — в docker-mac/.env, не попадает в git)
+      ASHV_ADMIN_TOKEN: ${ASHV_ADMIN_TOKEN:-}
+    volumes:
+      - ./config:/config:ro
+      - ../pg.txt:/pg/pg.txt:ro
+      - dbash-data:/data
+    ports:
+      - "127.0.0.1:8080:8080"        # только с этого Mac
+    restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+volumes:
+  dbash-data:

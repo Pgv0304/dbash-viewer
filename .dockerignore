@@ -1,0 +1,5 @@
+# в образ идёт только app/ и requirements.txt — остальное не отправляем в сборку
+**
+!requirements.txt
+!app/
+app/**/__pycache__
