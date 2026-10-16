@@ -33,7 +33,7 @@
 | Из исходников | `./start.command` (macOS/Linux) или `start.bat` (Windows) |
 | Веб-сервер | `uvicorn app.main:app --port 8080` |
 | Docker | `docker build --build-arg INSTANT_CLIENT=1 -t dbash .` и `docker run -p 8080:8080 -e ORACLE_THICK=1 -v $PWD/pg.txt:/config/pg.txt:ro -v dbash:/data dbash` |
-| Docker на Mac | `cd docker-mac && docker compose up -d --build` → http://127.0.0.1:8080/ (см. `docker-mac/compose.yaml`) |
+| Docker на Mac | `cd docker-mac && docker compose up -d --build` → http://127.0.0.1:8090/ (см. `docker-mac/compose.yaml`) |
 
 Oracle 11g требует Oracle Instant Client («толстый» режим драйвера): он вложен в программу для macOS и в образ
 Docker (`INSTANT_CLIENT=1`). При запуске из исходников без клиента доступны Oracle 12.1 и новее.
