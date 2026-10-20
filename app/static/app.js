@@ -519,7 +519,8 @@ function renderDbList(d) {
         x.load ? '<span class="badge load">нагрузка</span>' : ''],
       actions: x.load_available
         ? `<button type="button" data-srvload="${x.load ? 'off' : 'on'}" class="${x.load ? 'on' : ''}"
-             title="Нагрузочное тестирование базы сервера">Нагрузка: ${x.load ? 'вкл' : 'выкл'}</button>` : '',
+             ${x.synthetic ? `data-target="${esc(x.name)}"` : ''}
+             title="${x.synthetic ? 'Имитация нагрузочного теста: сессии генератора нагрузки на графике' : 'Нагрузочное тестирование базы сервера'}">Нагрузка: ${x.load ? 'вкл' : 'выкл'}</button>` : '',
       current: connected.has(x.name) }));
   }
   const list = conns.all().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'));
@@ -551,14 +552,21 @@ $('dblist').addEventListener('click', async (e) => {
   } else if (b.dataset.srvload) {
     b.disabled = true;
     try {
+      const target = b.dataset.target || null;
       const r = await fetch('/api/server-load', { method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: b.dataset.srvload === 'on' }) });
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: b.dataset.srvload === 'on', target }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.detail || `Ошибка ${r.status}`);
-      DEFAULTS.server_load = j.server_load;
-      (DEFAULTS.server_dbs || []).forEach((x) => { if (x.load_available) x.load = j.server_load; });
-      toast(j.server_load ? 'Нагрузочное тестирование базы сервера запущено — первые фазы появятся на графике через несколько секунд'
-        : 'Нагрузочное тестирование базы сервера остановлено');
+      const synthetic = !!j.target;
+      if (synthetic) (DEFAULTS.server_dbs || []).forEach((x) => { if (x.name === j.target) x.load = j.server_load; });
+      else {
+        DEFAULTS.server_load = j.server_load;
+        (DEFAULTS.server_dbs || []).forEach((x) => { if (x.load_available && !x.synthetic) x.load = j.server_load; });
+      }
+      const what = synthetic ? `базы «${j.target}» (имитация)` : 'базы сервера';
+      toast(j.server_load ? `Нагрузочное тестирование ${what} запущено — первые фазы появятся на графике через несколько секунд`
+        : `Нагрузочное тестирование ${what} остановлено`);
       if (started) loadTargets().catch(() => {});
     } catch (err) { $('dberr').textContent = err.message; }
     renderDbList(DEFAULTS);

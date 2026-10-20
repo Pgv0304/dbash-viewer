@@ -1,0 +1,13 @@
+{
+  "retention_days": 0.25,
+  "session_hours": 12,
+  "open_server_db": true,
+  "targets": [
+    {"name": "Демо Oracle", "type": "demo", "backfill_hours": 1,
+     "display": "синтетическая: имитация нагрузки Oracle без подключения к базе"},
+    {"name": "Демо PostgreSQL", "type": "demo_pg", "backfill_hours": 1,
+     "display": "синтетическая: имитация нагрузки PostgreSQL без подключения к базе"}
+  ],
+  "demo_target": "Демо Oracle",
+  "server_targets": ["Демо Oracle", "Демо PostgreSQL"]
+}

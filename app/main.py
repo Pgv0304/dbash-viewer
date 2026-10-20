@@ -236,13 +236,19 @@ def _load_target():
     return name if name in COLLECTORS and CONFIG.get("demo_load") else None
 
 
+def _synthetic(name: str) -> bool:
+    c = COLLECTORS.get(name)
+    return bool(c) and c.cfg.get("type") in ("demo", "demo_pg")
+
+
 def _server_db_info(name: str) -> dict:
     cfg = COLLECTORS[name].cfg
-    synthetic = cfg.get("type") == "demo"
+    synthetic = _synthetic(name)
     desc = cfg.get("display") or ("синтетическая: имитация нагрузки без подключения к Oracle" if synthetic
                                   else f'{cfg.get("user", "")}@{cfg.get("dsn", "")}')
+    # у синтетической базы нагрузочный тест — имитация (app/demo_load.py), он доступен всегда
     return {"name": name, "desc": desc, "synthetic": synthetic, "kind": dbt.kind_of(cfg),
-            "load_available": name == _load_target(), "load": bool(LOADGENS.get(name))}
+            "load_available": synthetic or name == _load_target(), "load": bool(LOADGENS.get(name))}
 
 
 # ----------------------------------------------------------------------------- login journal
@@ -416,12 +422,27 @@ def _start_server_load():
 
 
 @app.post("/api/server-load")
-def server_load(request: Request, enabled: bool = Body(..., embed=True)):
+def server_load(request: Request, body: dict = Body(...)):
     """Switch the load generator of the server's own database on or off (the list's «Нагрузка» button).
-    Like the database itself, it needs no password when the server database is open."""
+    Like the database itself, it needs no password when the server database is open.
+    {"enabled": bool, "target": имя} — для синтетической базы включает имитацию нагрузочного теста."""
     global LOADGEN
     if not _server_open() and not _session(request)[1]:
         raise HTTPException(401, "login required")
+    enabled = bool(body.get("enabled"))
+    target = body.get("target")
+    if target and _synthetic(target):
+        from .demo_load import DemoLoad
+        with _lock:
+            g = LOADGENS.pop(target, None)
+            if g:
+                g.stop()
+            if enabled:
+                g = DemoLoad(COLLECTORS[target], dbt.kind_of(COLLECTORS[target].cfg))
+                g.start()
+                LOADGENS[target] = g
+        log.info("demo load for %s %s", target, "started" if enabled else "stopped")
+        return {"server_load": enabled, "target": target}
     if not CONFIG.get("demo_load"):
         raise HTTPException(409, "Для базы сервера не настроен пользователь нагрузки (блок demo_load в конфигурации)")
     with _lock:

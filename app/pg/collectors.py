@@ -21,7 +21,7 @@ import threading
 import time
 import zlib
 
-from .. import store
+from .. import demo_snap, store
 
 log = logging.getLogger("pgash.collector")
 
@@ -484,20 +484,70 @@ class DemoCollector(Collector):
     def run(self):
         now = int(time.time())
         hours = float(self.cfg.get("backfill_hours", 3))
-        for ts in range(now - int(hours * 3600), now):
-            self._tick(ts)
+        # история пачками по 5 минут: по записи на секунду медленный диск (PythonAnywhere) пишет её часами
+        start = now - int(hours * 3600)
+        for chunk in range(start, now, 300):
+            ticks, rows = [], []
+            for ts in range(chunk, min(chunk + 300, now)):
+                self._tick(ts, (ticks, rows))
+            store.write_samples(self.name_, ticks, rows)
+            self.last_sample = ticks[-1]
+        self._demo_snapshots_at_start(now, hours)
         self.status = "running"
+        buf, flushed = ([], []), time.time()
         while not self._stop.is_set():
             t0 = time.time()
-            self._tick(int(t0))
+            ts = int(t0)
+            self._tick(ts, buf)
+            load = getattr(self, "demo_load", None)      # имитация нагрузочного теста (app/demo_load.py)
+            if load is not None:
+                buf[1].extend(load.rows(ts, self.name_))
+            if t0 - flushed >= 5:                         # запись пачкой раз в 5 с: на медленном диске
+                self._flush(buf)                          # запись каждую секунду не успевает
+                buf, flushed = ([], []), t0
+            self._maybe_demo_snapshot(t0)
             self._stop.wait(max(0.05, self.interval - (time.time() - t0)))
+        self._flush(buf)
+
+    def _flush(self, buf):
+        if not buf[0]:
+            return
+        store.write_samples(self.name_, buf[0], buf[1])
+        self.last_sample = buf[0][-1]
+        if not hasattr(self, "_texts_saved"):
+            store.save_sqltext(self.name_, [(s, t, o) for s, o, t in _DEMO_SQL])
+            self._texts_saved = True
+
+    # --- synthetic statistics snapshots, so the performance report works in the demo
+    snapshot_minutes = demo_snap.SNAPSHOT_MINUTES
+
+    def _demo_snapshots_at_start(self, now: int, hours: float):
+        if store.last_snapshot_ts(self.name_) >= now - 600:
+            return
+        span = hours * 3600
+        for i in range(demo_snap.BACKFILL_SNAPSHOTS):
+            self._save_demo_snapshot(now - span + span * i / demo_snap.BACKFILL_SNAPSHOTS, False)
+        self._next_snap = now + self.snapshot_minutes * 60
+
+    def _maybe_demo_snapshot(self, now: float):
+        if now >= getattr(self, "_next_snap", 0):
+            self._next_snap = now + self.snapshot_minutes * 60
+            self._save_demo_snapshot(now, False)
+
+    def take_snapshot(self, manual: bool = False) -> int:
+        return self._save_demo_snapshot(time.time(), manual)
+
+    def _save_demo_snapshot(self, ts: float, manual: bool) -> int:
+        from . import awr
+        return awr.save(self.name_, demo_snap.postgres(demo_snap.startup_for(ts), ts, _DEMO_SQL, _DEMO_PROFILES, _DEMO_USERS, fingerprint), manual)
 
     def _load(self, ts):
         base = 4 + 3 * math.sin(ts / 900.0) + 2 * math.sin(ts / 137.0)
         spike = 9 if (ts // 600) % 6 == 0 and (ts % 600) < 180 else 0  # periodic incident
         return max(0.5, base + spike), spike > 0
 
-    def _tick(self, ts):
+    def _tick(self, ts, out=None):
+        """Выборка за секунду ts; out=(ticks, rows) — накопить для записи пачкой (история при старте)."""
         rng = self.rng
         load, incident = self._load(ts)
         n = max(0, int(rng.gauss(load, 1.2)))
@@ -523,6 +573,13 @@ class DemoCollector(Collector):
             rows.append({"target": self.name_, "ts": ts, "inst_id": 1, "sid": 77, "serial": 1,
                          "username": "(autovacuum worker)", "program": "autovacuum worker", "module": "shop",
                          "event": "VacuumDelay", "wait_class": "Timeout", "session_type": "BACKGROUND"})
+        if out is not None:                          # история при старте: нагрузочного теста в прошлом не было
+            out[0].append(ts)
+            out[1].extend(rows)
+            return
+        load = getattr(self, "demo_load", None)      # имитация нагрузочного теста (app/demo_load.py)
+        if load is not None:
+            rows += load.rows(ts, self.name_)
         store.write_samples(self.name_, [ts], rows)
         if not hasattr(self, "_texts_saved"):
             store.save_sqltext(self.name_, [(s, t, o) for s, o, t in _DEMO_SQL])
