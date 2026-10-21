@@ -63,7 +63,7 @@
 | Программа для Windows | `DBASHViewer.exe` из GitHub Actions (`.github/workflows/windows.yml`); Windows 7 и новее. Руководство — `docs/` |
 | Из исходников | `./start.command` (macOS/Linux) или `start.bat` (Windows) |
 | Веб-сервер | `pip install -r requirements.txt` и `uvicorn app.main:app --port 8080` |
-| Docker | `docker build --build-arg INSTANT_CLIENT=1 -t dbash .` и `docker run -p 8080:8080 -e ORACLE_THICK=1 -v $PWD/pg.txt:/config/pg.txt:ro -v dbash:/data dbash` |
+| Docker | `docker build --build-arg INSTANT_CLIENT=1 -t dbash .` и `docker run -p 127.0.0.1:8096:8080 -e ORACLE_THICK=1 -v $PWD/pg.txt:/config/pg.txt:ro -v dbash:/data dbash` → http://127.0.0.1:8096/ (внутри контейнера приложение слушает 8080, снаружи — любой свободный порт) |
 | Docker на Mac | `cd docker-mac && docker compose up -d --build` → http://127.0.0.1:8096/ (порт — `DBASH_PORT`) |
 | Демо на PythonAnywhere | архив и шаги — `pythonanywhere/README.md` |
 
